@@ -1,0 +1,238 @@
+---
+title: "Debate7"
+author: "Will Baldwin"
+date: "11/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(quanteda)
+library(textdata)
+library(genius)
+library(ggplot2)
+library(ggalt)
+library(tidyr)
+library(tidytext)
+library(tidyverse)
+library(rvest)
+library(plotly)
+```
+
+```{r, include=FALSE}
+dict <- data_dictionary_LSD2015
+
+url <- ("https://www.presidency.ucsb.edu/documents/republican-candidates-debate-des-moines-iowa-0")
+debate7 <- read_html(url)
+participants7 <- "BUSH|CARSON|CHRISTIE|CRUZ|KASICH|RUBIO|PAUL|BAIER|KELLY|WALLACE"
+participantsRemove7 <- "BUSH:|CARSON:|CHRISTIE:|CRUZ:|KASICH:|RUBIO:|PAUL:|BAIER:|KELLY:|WALLACE:"
+```
+
+## Sentiment Analysis
+```{r, include = FALSE}
+debate7DF <- scrape_transcript(debate7, participants7, participantsRemove7)
+```
+
+### Using Lexicoder Sentiment Dictionary and NRC sentiment dictionary
+```{r, include = FALSE}
+#Data sets
+
+totalWords <- debate7DF %>%
+  unnest_tokens(word, text) %>%
+  group_by(speaker) %>%
+  count() %>%
+  rename(total = n)
+
+
+lsdDf <- dfm(debate7DF$text, dictionary = data_dictionary_LSD2015)
+
+newLsdDf <- convert(lsdDf, to = "data.frame")
+
+newLsdDf$doc_id <- debate7DF$speaker
+
+dumbellDFLSD <- newLsdDf %>%
+  select(doc_id, positive, negative) %>%
+  group_by(doc_id) %>%
+  summarise(positive = sum(positive), negative = sum(negative)) %>%
+  inner_join(totalWords, by = c("doc_id" = "speaker")) %>%
+  rename(speaker = doc_id) %>%
+  mutate(positive = positive/total * 100,
+         negative = negative/total * 100,
+         difference = positive - negative)
+
+barDFLSD <- newLsdDf %>%
+  select(doc_id, positive, negative) %>%
+  group_by(doc_id) %>%
+  summarise(positive = sum(positive), negative = sum(negative)) %>%
+  inner_join(totalWords, by = c("doc_id" = "speaker")) %>%
+  rename(speaker = doc_id) %>%
+  mutate(positive = positive/total * 100,
+         negative = negative/total * 100,
+         difference = positive - negative) %>%
+  gather(sentiment, percent, 2:3)
+
+barDFNRC <- debate7DF %>%
+  unnest_tokens(word, text) %>%
+  group_by(speaker, word) %>%
+  count() %>%
+  ungroup(word) %>%
+  mutate(
+    total = sum(n),
+  ) %>%
+  inner_join(get_sentiments("nrc")) %>%
+  filter(sentiment != "negative") %>%
+  filter(sentiment != "positive") %>%
+  ungroup(speaker) %>%
+  group_by(speaker, sentiment, total) %>%
+  count() %>%
+  mutate(
+    percent = n/total * 100
+  ) 
+```
+
+
+```{r, echo = FALSE}
+#Graphs
+
+blue <- "#0171CE"
+red <- "#DE4433"
+
+emotions <- c("anger" = "#DC143C", "joy" = "#DADB27", "fear" = "#8AC33E", "trust" = "#7EC0EE")
+
+barDFNRC %>%
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  filter(sentiment == "trust" || sentiment == "fear" || sentiment == "joy" || sentiment == "anger") %>%
+  ggplot(mapping = aes(x = sentiment, y = percent)) + 
+  geom_segment(aes(x = sentiment, xend = sentiment, y = 0, yend = percent), color = "grey") + geom_point(aes(color = sentiment), size = 4, alpha = 0.6) + coord_flip() + labs(title = "Emotive language used in first 2016 GOP Primary Debate (NRC)", x = "speaker", y = "emotive language as % of total words", subtitle = "Cruz appears to have used the most emotive language")  + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+) + facet_wrap(~speaker) + scale_color_manual(values = emotions)
+
+
+dumbellDFLSD %>%
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  ggplot() +
+  geom_segment(aes(y = fct_reorder(speaker, difference), yend = speaker, x = 0.5, xend = 6.5), color = "#b2b2b2", size = 0.15) +
+  geom_dumbbell(aes(y = fct_reorder(speaker, difference), x = positive, xend = negative), size=1.5, color="#b2b2b2", size_x=3, size_xend = 3, colour_x = blue, colour_xend = red) +
+  geom_text(data = filter(dumbellDFLSD, speaker == "RUBIO"), 
+            aes(x = 2.8, y = speaker, label = "Negative"), 
+            color = red, size = 2.5, fontface = "bold", vjust = -1)+
+  geom_text(data = filter(dumbellDFLSD, speaker == "RUBIO"), 
+            aes(x = 5.3, y = speaker, label = "Positive"), 
+            color = blue, size = 2.5, fontface = "bold", vjust = -1) +
+  geom_text(aes(x = negative, y = speaker, label = round(negative, digits = 2)), color = red, size = 2.5, vjust = 1.5) +
+  geom_text(aes(x = positive, y = speaker, label = round(positive, digits = 2)), color = blue, size = 2.5, vjust = 1.5) +
+  geom_rect(aes(xmin = 6.45, xmax = 7.05, ymin = -Inf, ymax = Inf), fill = "grey") +
+  geom_text(aes(label = paste0(round(difference, digits = 2), "%"), y = speaker, x = 6.75), size = 2.5)  +
+  geom_text(data = filter(dumbellDFLSD, speaker == "RUBIO"), aes(x = 6.75, y = speaker, label = "Difference"), color = "black", size = 2.5, vjust = -.78, fontface = "bold") + labs(x = "emotive language as % of total words", y = "speaker", title = "Sentiment differences in first 2016 GOP Primary Debate (Lexicoder Sentiment Dictionary)", subtitle = "Carson exhibits the greatest preference for positive diction" ) + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+)
+
+barDFLSD %>%
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  ggplot(mapping = aes(x = fct_reorder(speaker, percent), y = percent, fill =sentiment)) + 
+  geom_col() + coord_flip() + labs(title = "Emotive language used in first 2016 GOP Primary Debate", x = "speaker", y = "emotive language as % of total words", subtitle = "Cruz appears to have used the most emotive language") + scale_fill_manual(values = c(red, blue)) + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+)
+```
+
+## Structural Analysis
+```{r, echo = FALSE}
+#Graphs
+debate7DF %>% 
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  unnest_tokens(words, text, token = "words") %>%
+  group_by(speaker) %>%
+  count() %>%
+  ggplot(mapping = aes(x = fct_reorder(speaker, n), y = n, fill = n)) + 
+  geom_col() + coord_flip() + labs(title = "Who Talked The Most?", subtitle = "", x = "speaker", y = "total words") + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+)
+
+debate7DF %>% 
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  unnest_tokens(sentence, text, token = "sentences") %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(word, sentence) %>%
+  group_by(id, speaker) %>%
+  count() %>%
+  ungroup(id) %>%
+  summarize(avg_length = mean(n)) %>% 
+  ggplot(mapping = aes(x = fct_reorder(speaker, avg_length), y = avg_length, fill = avg_length)) +
+  geom_col() + coord_flip() + labs(title = "Which candidate's sentences were longest?", x = "speaker", y = "average words per sentence") + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+)
+
+debate7DF %>%
+  filter(speaker != "BAIER" , speaker != "KELLY", speaker != "WALLACE") %>%
+  unnest_tokens(word, text) %>%
+  group_by(speaker, word) %>%
+  count() %>%
+  ungroup(word) %>%
+  mutate(
+    total = sum(n),
+  ) %>%
+  inner_join(parts_of_speech) %>%
+  mutate(
+    pos = case_when(
+      pos == "Verb (intransitive)" ~ "Verb",
+      pos == "Verb (usu participle)" ~ "Verb",
+      pos == "Verb (transitive)" ~ "Verb",
+      TRUE ~ pos
+    )) %>% 
+  group_by(speaker, pos, total) %>%
+  count() %>%
+  mutate(
+    percent = n/total * 100
+  ) %>% 
+  filter(speaker != "KELLY" , speaker != "WALLACE", speaker != "BAIER") %>%
+  filter(pos == "Adjective" || pos == "Noun" || pos == "Adverb" || pos == "Verb") %>%
+  ggplot(mapping = aes(x = pos, y = percent)) + 
+  geom_segment(aes(x = pos, xend = pos, y = 0, yend = percent), color = "grey") + geom_point(aes(color = pos), size = 4, alpha = 0.6) + coord_flip() + labs(title = "What Parts of Speech did Candidates Use?", y = "pos as percent of total words", x = "speaker", subtitle = "") + theme_bw()+
+theme(
+ # panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  panel.border=element_blank(),
+  plot.title=element_text(size = 16, face="bold"),
+  plot.title.position = "plot",
+  plot.subtitle=element_text(face="italic", size=12, margin=margin(b=12)),
+  plot.caption=element_text(size=8, margin=margin(t=12), color="#7a7d7e")
+) + facet_wrap(~speaker)
+```

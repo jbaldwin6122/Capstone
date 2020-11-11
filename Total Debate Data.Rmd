@@ -1,0 +1,117 @@
+---
+title: "Total Debate Data"
+author: "Will Baldwin"
+date: "11/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+install.packages("Rgnuplot")
+library(quanteda)
+library(textdata)
+library(genius)
+library(ggplot2)
+library(ggalt)
+library(tidyr)
+library(tidytext)
+library(tidyverse)
+library(rvest)
+library(plotly)
+library(lubridate)
+```
+
+```{r}
+#prepare all debate data sets for global join
+
+debate1DF$date <- "8/6/2015"
+debate1DF$state <- "Cleveland"
+
+debate2DF$date <- "9/16/2015"
+debate2DF$state <- "California"
+
+debate3DF$date <- "10/28/2015"
+debate3DF$state <- "Colorado"
+
+debate4DF$date <- "11/10/2015"
+debate4DF$state <- "Milwaukee"
+
+debate5DF$date <- "12/15/2015"
+debate5DF$state <- "Nevada"
+
+debate6DF$date <- "1/14/2016"
+debate6DF$state <- "South Carolina"
+
+debate7DF$date <- "1/28/2016"
+debate7DF$state <- "Iowa"
+
+debate8DF$date <- "2/6/2016"
+debate8DF$state <- "New Hampshire"
+
+debate9DF$date <- "2/13/2016"
+debate9DF$state <- "South Carolina"
+
+debate10DF$date <- "2/25/2016"
+debate10DF$state <- "Texas"
+
+debate11DF$date <- "3/3/2016"
+debate11DF$state <- "Michigan"
+
+debate12DF$date <- "3/10/2016"
+debate12DF$state <- "Florida"
+```
+
+```{r}
+#Create the global dataset
+primaryDebates <- rbind(debate1DF, debate2DF, debate3DF, debate4DF, debate5DF, debate6DF, debate7DF, debate8DF, debate9DF, debate10DF, debate11DF, debate12DF)
+
+primaryDebates$date <- as.Date(primaryDebates$date, "%m/%d/%Y")
+```
+
+```{r}
+#Create dataframe with Lexicoder Sentiment Dictionary values
+
+totalWordspD <- primaryDebates %>%
+  unnest_tokens(word, text) %>%
+  group_by(speaker, date) %>%
+  count() %>%
+  rename(total = n)
+
+primaryLSD <- dfm(primaryDebates$text, dictionary = data_dictionary_LSD2015)
+primaryLSD <- convert(primaryLSD, to = "data.frame")
+
+primaryLSD$doc_id <- primaryDebates$speaker
+primaryLSD$date <- primaryDebates$date
+primaryLSD$state <- primaryDebates$state
+
+blue <- "#067EE4"
+red <- "#E91306"
+
+p <- primaryLSD %>%
+  group_by(doc_id, date, state) %>%
+  summarise(positive = sum(positive), negative = sum(negative))%>%
+  inner_join(totalWordspD, by = c("doc_id" = "speaker", "date" = "date")) %>%
+  rename(speaker = doc_id) %>%
+  mutate(positive = positive/total * 100,
+         negative = negative/total * 100,
+         difference = positive - negative) %>%
+ #filter(speaker == "TRUMP" | speaker == "CRUZ" | speaker == "RUBIO" | speaker == "KASICH") %>% 
+  filter(speaker == "TRUMP" | speaker == "CRUZ" | speaker == "RUBIO" | speaker == "KASICH"| speaker == "CARSON" | speaker == "BUSH" | speaker == "PAUL" | speaker == "CHRISTIE" | speaker == "FIORINA" | speaker == "WALKER") %>% 
+  ggplot() +
+ # geom_col(mapping = aes(x = date, y = difference, fill = speaker))+
+ # geom_point(mapping = aes(x = date,y = difference,color = speaker), alpha = .7, size = 3) + 
+ # geom_line(mapping = aes(x = date, y = difference, color = speaker)) + 
+ #  geom_hline(yintercept = 0, color = red, linetype = 2) + facet_wrap(~speaker)
+   theme_fivethirtyeight() + labs(title = "Sentiment during Primary Debates", x = "net sentiment", y = "date") +
+   geom_raster(mapping = aes(x = date, y = speaker, fill = difference)) + 
+   scale_fill_gradient2(high = blue, low = red)
+   
+ggplotly(p)
+
+
+
+```
+
