@@ -1,0 +1,39 @@
+---
+title: "ElectionResults"
+author: "Will Baldwin"
+date: "11/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(tseries)
+library(xts)
+library(quantmod)
+```
+
+```{r}
+
+primary_results <- read.csv("primary_results.csv")
+primary_dates <- read.csv("primary_dates.csv")
+primary_results <- primary_results %>%
+  inner_join(primary_dates, by = c("state" = "State"))
+
+primary_results$Date <- mdy(primary_results$Date)
+
+
+ggplotly(primary_results %>% filter(party == "Republican") %>%
+  group_by(candidate, Date) %>%
+  summarise(votes = sum(votes)) %>%
+  ggplot(mapping = aes(x = Date, y = votes)) + 
+  geom_col(mapping = aes(fill = candidate), position = "fill"))
+ # geom_point(mapping = aes(color = candidate)) + 
+ # geom_line(mapping = aes(color = candidate)) +
+ # geom_vline(xintercept = c(mdy("8/6/2015"), mdy("9/16/2015"), mdy("10/28/2015"), mdy("11/10/2015"), mdy("12/15/2015"), mdy("1/14/2016"), mdy("1/28/2016"), mdy("2/6/2016"), mdy("2/13/2016"), mdy("2/25/2016"), mdy("3/3/2016"), mdy("3/10/2016")), linetype = "dotted")
+
+primary_results %>%
+  select(Date, )
+  
+```
